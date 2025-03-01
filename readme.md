@@ -4,4 +4,5 @@ this program converts an image into an Excel,just a a fun tool
 
 example:
 
-![alt text](image.png)
+![image](https://github.com/user-attachments/assets/cd242f73-1ce3-49df-8681-93b820e39c41)
+
