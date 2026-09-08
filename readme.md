@@ -29,5 +29,6 @@ go build -o i2e .
   - **Full Dynamic Range**: Bit replication (`(v & 0xF8) | (v >> 5)`) maps `0x00 -> 0x00` and `0xF8 -> 0xFF`, ensuring pure whites and blacks are preserved without darkening.
 
 ## Example
+<img width="1331" height="615" alt="image" src="https://github.com/user-attachments/assets/ffd31fd1-5fb9-4460-a2fe-1ce99834358f" />
 
 
