@@ -31,12 +31,8 @@ func main() {
 	img := loadImage(imgPath)
 	width, height := img.Bounds().Dx(), img.Bounds().Dy()
 
-	pass1Start := time.Now()
 	styles, palette := buildPalette(img)
-	log.Printf("Pass 1 (palette analysis): %d unique colors in %s\n",
-		len(palette), time.Since(pass1Start))
 
-	pass2Start := time.Now()
 	outFile, err := os.Create(outPath)
 	if err != nil {
 		log.Fatalf("failed to create output file: %v", err)
@@ -61,8 +57,8 @@ func main() {
 	if err := w.Close(); err != nil {
 		log.Fatalf("failed to close xlsx writer: %v", err)
 	}
-	log.Printf("Pass 2 (XLSX streaming): completed in %s\n", time.Since(pass2Start))
-	log.Printf("Total execution time: %s -> saved to %s\n", time.Since(start), outPath)
+
+	log.Printf("Execution time: %s\n", time.Since(start))
 }
 
 func buildPalette(img image.Image) (map[unique.Handle[xlsxwriter.RGB]]int, []xlsxwriter.RGB) {
@@ -80,6 +76,14 @@ func buildPalette(img image.Image) (map[unique.Handle[xlsxwriter.RGB]]int, []xls
 	return styles, palette
 }
 
+// quantize reduces an 8-bit channel to 5 bits (32 levels per channel, RGB555).
+// This mathematically bounds the total possible colors to 32,768 (32^3),
+// strictly avoiding Microsoft Excel's hard limit of 64,000 unique cell styles.
+// Bit replication (v >> 5) maps 0x00->0x00 and 0xF8->0xFF, preserving full [0, 255] range.
+func quantize(v uint8) uint8 {
+	return (v & 0xF8) | (v >> 5)
+}
+
 func getPixelColor(img image.Image, x, y int) unique.Handle[xlsxwriter.RGB] {
 	r, g, b, a := img.At(x, y).RGBA()
 	if a > 0 {
@@ -88,9 +92,9 @@ func getPixelColor(img image.Image, x, y int) unique.Handle[xlsxwriter.RGB] {
 		b = b * 0xffff / a
 	}
 	return unique.Make(xlsxwriter.RGB{
-		R: uint8(r >> 8),
-		G: uint8(g >> 8),
-		B: uint8(b >> 8),
+		R: quantize(uint8(r >> 8)),
+		G: quantize(uint8(g >> 8)),
+		B: quantize(uint8(b >> 8)),
 	})
 }
 
