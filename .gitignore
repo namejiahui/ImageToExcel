@@ -1,1 +1,18 @@
-.vscode
+# Binaries
+/i2e
+/ImageToExcel
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Generated Excel outputs & lock files
+*.xlsx
+.~lock.*.xlsx#
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -12,7 +12,7 @@ import (
 	"time"
 	"unique"
 
-	"i2e/xlsxwriter"
+	"github.com/namejiahui/ImageToExcel/xlsxwriter"
 )
 
 func main() {

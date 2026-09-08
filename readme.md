@@ -2,13 +2,20 @@
 
 A fun tool that converts an image into an Excel spreadsheet as pixel art.
 
+## Installation
+
+```bash
+go install github.com/namejiahui/ImageToExcel@latest
+```
+
 ## Usage
 
 ```bash
-# Build
-go build -o i2e .
+# Via go install
+ImageToExcel <input-image> [output.xlsx]
 
-# Run
+# Or build from source
+go build -o i2e .
 ./i2e <input-image> [output.xlsx]
 ```
 
