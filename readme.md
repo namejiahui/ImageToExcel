@@ -1,8 +1,18 @@
-this program converts an image into an Excel,just a a fun tool
+# ImageToExcel (i2e)
 
-**warning:** Avoid using high-resolution images, as the program is inefficient.
+A fun tool that converts an image into an Excel spreadsheet as pixel art.
 
-example:
+## Usage
+
+```bash
+# Build
+go build -o i2e .
+
+# Run
+./i2e <input-image> [output.xlsx]
+```
+
+## Example
 
 ![image](https://github.com/user-attachments/assets/cd242f73-1ce3-49df-8681-93b820e39c41)
 

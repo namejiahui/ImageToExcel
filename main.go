@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"image"
 	_ "image/jpeg"
@@ -8,59 +9,105 @@ import (
 	"iter"
 	"log"
 	"os"
-	"sync"
 	"time"
 	"unique"
 
-	"github.com/xuri/excelize/v2"
+	"i2e/xlsxwriter"
 )
 
-type RGB struct {
-	R, G, B uint8
-}
-
-type colorRequest struct {
-	color    unique.Handle[RGB]
-	response chan int
-}
-
 func main() {
-	start := time.Now()
-	image := loadImage(os.Args[1])
-	f := excelize.NewFile()
-	maxX := image.Bounds().Dx()
-	colorChan := processBackgroundColor(f)
-	wg := &sync.WaitGroup{}
-
-	endCol, _ := excelize.ColumnNumberToName(maxX)
-	f.SetColWidth("Sheet1", "A", endCol, 0.01)
-
-	if err := f.SetSheetProps("Sheet1", &excelize.SheetPropsOptions{
-		DefaultRowHeight: new(1.0),
-		CustomHeight:     new(true),
-	}); err != nil {
-		log.Fatalf("failed to set sheet props: %v", err)
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: i2e <input-image> [output.xlsx]")
+		os.Exit(1)
 	}
 
-	for y, row := range ImageRows(image) {
-		for x, colorHandle := range row {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				responseChan := make(chan int)
-				colorChan <- colorRequest{color: colorHandle, response: responseChan}
-				styleID := <-responseChan
-				cell, err := excelize.CoordinatesToCellName(x+1, y+1)
-				if err != nil {
-					log.Fatalf("failed to get CellName: %v", err)
-				}
-				f.SetCellStyle("Sheet1", cell, cell, styleID)
-			}()
+	start := time.Now()
+	imgPath := os.Args[1]
+	outPath := "output.xlsx"
+	if len(os.Args) > 2 {
+		outPath = cmp.Or(os.Args[2], outPath)
+	}
+
+	img := loadImage(imgPath)
+	width, height := img.Bounds().Dx(), img.Bounds().Dy()
+
+	pass1Start := time.Now()
+	styles, palette := buildPalette(img)
+	log.Printf("Pass 1 (palette analysis): %d unique colors in %s\n",
+		len(palette), time.Since(pass1Start))
+
+	pass2Start := time.Now()
+	outFile, err := os.Create(outPath)
+	if err != nil {
+		log.Fatalf("failed to create output file: %v", err)
+	}
+	defer outFile.Close()
+
+	w, err := xlsxwriter.New(outFile, width, height, palette)
+	if err != nil {
+		log.Fatalf("failed to create xlsx writer: %v", err)
+	}
+
+	rowStyleIDs := make([]int, width)
+	for y, row := range ImageRows(img) {
+		for x, c := range row {
+			rowStyleIDs[x] = styles[c]
+		}
+		if err := w.WriteRow(y+1, rowStyleIDs); err != nil {
+			log.Fatalf("failed to write row: %v", err)
 		}
 	}
-	wg.Wait()
-	f.SaveAs("output.xlsx")
-	log.Printf("Execution time: %s\n", time.Since(start))
+
+	if err := w.Close(); err != nil {
+		log.Fatalf("failed to close xlsx writer: %v", err)
+	}
+	log.Printf("Pass 2 (XLSX streaming): completed in %s\n", time.Since(pass2Start))
+	log.Printf("Total execution time: %s -> saved to %s\n", time.Since(start), outPath)
+}
+
+func buildPalette(img image.Image) (map[unique.Handle[xlsxwriter.RGB]]int, []xlsxwriter.RGB) {
+	styles := make(map[unique.Handle[xlsxwriter.RGB]]int)
+	var palette []xlsxwriter.RGB
+
+	for _, row := range ImageRows(img) {
+		for _, c := range row {
+			if _, exists := styles[c]; !exists {
+				palette = append(palette, c.Value())
+				styles[c] = len(palette)
+			}
+		}
+	}
+	return styles, palette
+}
+
+func getPixelColor(img image.Image, x, y int) unique.Handle[xlsxwriter.RGB] {
+	r, g, b, a := img.At(x, y).RGBA()
+	if a > 0 {
+		r = r * 0xffff / a
+		g = g * 0xffff / a
+		b = b * 0xffff / a
+	}
+	return unique.Make(xlsxwriter.RGB{
+		R: uint8(r >> 8),
+		G: uint8(g >> 8),
+		B: uint8(b >> 8),
+	})
+}
+
+func ImageRows(img image.Image) iter.Seq2[int, []unique.Handle[xlsxwriter.RGB]] {
+	return func(yield func(int, []unique.Handle[xlsxwriter.RGB]) bool) {
+		bounds := img.Bounds()
+		width := bounds.Dx()
+		row := make([]unique.Handle[xlsxwriter.RGB], width)
+		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+			for x := bounds.Min.X; x < bounds.Max.X; x++ {
+				row[x-bounds.Min.X] = getPixelColor(img, x, y)
+			}
+			if !yield(y-bounds.Min.Y, row) {
+				return
+			}
+		}
+	}
 }
 
 func loadImage(imgPath string) image.Image {
@@ -74,64 +121,4 @@ func loadImage(imgPath string) image.Image {
 		log.Fatalf("failed to decode image: %v", err)
 	}
 	return img
-}
-
-func getPixelColor(img image.Image, x, y int) unique.Handle[RGB] {
-	r, g, b, a := img.At(x, y).RGBA()
-	if a > 0 {
-		r = r * 0xffff / a
-		g = g * 0xffff / a
-		b = b * 0xffff / a
-	}
-	return unique.Make(RGB{
-		R: uint8(r >> 8),
-		G: uint8(g >> 8),
-		B: uint8(b >> 8),
-	})
-}
-
-func processBackgroundColor(f *excelize.File) chan colorRequest {
-	styles := make(map[unique.Handle[RGB]]int)
-	colorChan := make(chan colorRequest)
-	go func() {
-		for req := range colorChan {
-			styleID, exists := styles[req.color]
-			if !exists {
-				c := req.color.Value()
-				hexColor := fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B)
-				style := &excelize.Style{
-					Fill: excelize.Fill{
-						Type:    "pattern",
-						Pattern: 1,
-						Color:   []string{hexColor},
-					},
-				}
-				var err error
-				styleID, err = f.NewStyle(style)
-				if err != nil {
-					log.Fatalf("failed to NewStyle: %v", err)
-				}
-				styles[req.color] = styleID
-			}
-			req.response <- styleID
-		}
-	}()
-	return colorChan
-}
-
-// ImageRows returns an iterator yielding (y, rowColors) for each row of the image.
-func ImageRows(img image.Image) iter.Seq2[int, []unique.Handle[RGB]] {
-	return func(yield func(int, []unique.Handle[RGB]) bool) {
-		bounds := img.Bounds()
-		width := bounds.Dx()
-		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-			row := make([]unique.Handle[RGB], width)
-			for x := bounds.Min.X; x < bounds.Max.X; x++ {
-				row[x-bounds.Min.X] = getPixelColor(img, x, y)
-			}
-			if !yield(y-bounds.Min.Y, row) {
-				return
-			}
-		}
-	}
 }
