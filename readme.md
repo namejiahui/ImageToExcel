@@ -1,6 +1,6 @@
 # ImageToExcel (i2e)
 
-A fun tool that converts an image into an Excel spreadsheet as pixel art.
+A fun, high-performance tool that converts an image into an Excel spreadsheet as pixel art, accelerated by WebGPU (Zero-CGO).
 
 ## Installation
 
@@ -28,7 +28,16 @@ go build -o i2e .
   - **Upper Bound**: Total unique colors in any image are strictly capped at $32^3 = 32,768$, safely below Excel's 64,000 ceiling.
   - **Full Dynamic Range**: Bit replication (`(v & 0xF8) | (v >> 5)`) maps `0x00 -> 0x00` and `0xF8 -> 0xFF`, ensuring pure whites and blacks are preserved without darkening.
 
+## Performance & GPU Acceleration
+
+- **Zero-CGO WebGPU**: Powered by pure-Go WebGPU (`gogpu/wgpu`), color quantization and unique palette extraction are computed concurrently on the GPU via WGSL Compute Shaders without GCC, Clang, or external `.so` dependencies (`CGO_ENABLED=0`).
+- **Automatic Fallback**: If no compatible GPU or Vulkan/Metal/DirectX driver is detected (e.g. in headless servers or CI), it seamlessly falls back to CPU processing without errors.
+- **Speedup**: Achieves over **35% end-to-end speedup** on multi-megapixel images (~611ms vs ~944ms on 3.5M pixels).
+
 ## Example
-<img width="1331" height="615" alt="image" src="https://github.com/user-attachments/assets/ffd31fd1-5fb9-4460-a2fe-1ce99834358f" />
+
+*(Left: Generated Excel spreadsheet | Right: Original image)*
+
+<img width="1331" height="615" alt="ImageToExcel Comparison" src="https://github.com/user-attachments/assets/ffd31fd1-5fb9-4460-a2fe-1ce99834358f" />
 
 

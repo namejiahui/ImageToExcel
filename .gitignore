@@ -6,6 +6,7 @@
 *.dll
 *.so
 *.dylib
+/lib/
 
 # Generated Excel outputs & lock files
 *.xlsx
